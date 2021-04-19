@@ -1,0 +1,100 @@
+import tensorflow as tf
+import string
+import requests
+import pandas as pd
+
+response = requests.get('https://raw.githubusercontent.com/AmmarahJS/poemdata/7e61e85612d76fb229a299927a138e3bc31c8a63/modern')
+#takes txt file of database of poems
+#important to make github link "raw" - otherwise it will read github PAGE
+
+data = response.text.splitlines()
+
+import numpy as np
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, LSTM, Embedding
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+token = Tokenizer()
+token.fit_on_texts(data)
+print(token.word_index)
+#indexes of words - assigns a number for each word found in data
+
+encoded_text = token.texts_to_sequences(data)
+#convered text to numbers
+
+x = ['he and I']
+print(token.texts_to_sequences(x))
+#just a test to show how words are indexed
+
+vocab_size = len(token.word_counts) + 1
+#how many words
+
+datalist = []
+for d in encoded_text:
+  if len(d)>1:
+    for i in range(2, len(d)):
+      datalist.append(d[:i])
+      #print(d[:i])
+#creates list of every word
+      
+max_length = 20
+sequences = pad_sequences(datalist, maxlen=max_length, padding='pre')
+#transforms sequence to desired length
+
+X = sequences[:, :-1]
+y = sequences[:, -1]
+#forwards and backwords sequences, so you can see what word comes before and what comes after easily
+
+y = to_categorical(y, num_classes=vocab_size)
+seq_length = X.shape[1]
+#2D array
+
+model = Sequential()
+model.add(Embedding(vocab_size, 10, input_length=seq_length))
+model.add(LSTM(100, return_sequences=True))
+model.add(LSTM(100))
+model.add(Dense(100, activation='relu'))
+model.add(Dense(vocab_size, activation='softmax'))
+#fun machine learning sutff - actually using strategies to create a model
+
+model.summary()
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+#adam model good for datanases with lots of noise - like poems, where little pattern is seen
+
+model.fit(X, y, batch_size=32, epochs=100)
+#batch size - number of words it analyzes at once - larger groups faster but less accurate
+#epochs - how many times it goes through all of database - more the better
+
+
+poetry_length = 10
+#how many words in line#
+def generate_poetry(seed_text, n_lines):
+  for i in range(n_lines):
+    text = []
+    for _ in range(poetry_length):
+      encoded = token.texts_to_sequences([seed_text])
+      encoded = pad_sequences(encoded, maxlen=seq_length, padding='pre')
+
+      y_pred = np.argmax(model.predict(encoded), axis=-1)
+
+      predicted_word = ""
+      for word, index in token.word_index.items():
+        if index == y_pred:
+          predicted_word = word
+          break
+
+      seed_text = seed_text + ' ' + predicted_word
+      text.append(predicted_word)
+
+    seed_text = text[-1]
+    text = ' '.join(text)
+    print(text)
+#actual poetry generation
+#looks at each word, sees what usually surrounds it, remembers, continues with most common word after.
+
+seed_text = 'I give him'
+#base test to start generating from
+generate_poetry(seed_text, 5)
+#above text, plus how many lines
